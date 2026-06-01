@@ -1,0 +1,56 @@
+# Internal documentation
+agents.md
+design.md
+
+# Ignore these files anywhere in project
+**/agents.md
+**/design.md
+
+# Environment variables
+.env
+.env.*
+
+# Private folders
+.private/
+memory/
+
+# Logs
+logs/
+*.log
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+
+# Cache
+.cache/
+tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Deno
+.deno/
+
+# Rust
+target/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Generated files
+coverage/
