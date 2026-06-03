@@ -9,6 +9,7 @@ design.md
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # Private folders
 .private/

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BankPulse</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <nav class="nav">
+          <a class="brand" href="/">BankPulse</a>
+          <span id="healthBadge" class="badge">Checking</span>
+        </nav>
+        <section class="hero-grid">
+          <div>
+            <p class="eyebrow">Loan Approval Prediction</p>
+            <h1>Know the pulse of a loan application.</h1>
+          </div>
+          <div class="result-card" id="resultCard">
+            <p class="label">Loan Status</p>
+            <strong id="predictionText">Awaiting details</strong>
+            <div class="confidence">
+              <span>Confidence</span>
+              <span id="confidenceText">--%</span>
+            </div>
+            <div class="meter">
+              <span id="confidenceBar"></span>
+            </div>
+            <p id="explanationText" class="explanation">Submit customer values to generate a prediction and reason.</p>
+          </div>
+        </section>
+      </header>
+
+      <section class="stats-grid" aria-label="Dataset summary">
+        <article class="stat-card">
+          <span>Total Records</span>
+          <strong id="rowsValue">--</strong>
+        </article>
+        <article class="stat-card">
+          <span>Null Values</span>
+          <strong id="nullValue">--</strong>
+        </article>
+        <article class="stat-card">
+          <span>Approved Count</span>
+          <strong id="approvedValue">--</strong>
+        </article>
+        <article class="stat-card">
+          <span>Rejected Count</span>
+          <strong id="rejectedValue">--</strong>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <form id="loanForm" class="card form-card">
+          <div class="section-title">
+            <p class="eyebrow">Customer Data</p>
+            <h2>Prediction Form</h2>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              Education
+              <select name="education" required>
+                <option value="Graduate">Graduate</option>
+                <option value="Not Graduate">Not Graduate</option>
+              </select>
+            </label>
+            <label>
+              Self Employed
+              <select name="self_employed" required>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </label>
+            <label>
+              Dependents
+              <input type="number" name="no_of_dependents" min="0" max="10" step="1" placeholder="0" required />
+            </label>
+            <label>
+              Income
+              <input type="number" name="income_annum" min="0" step="1" placeholder="900000" required />
+            </label>
+            <label>
+              Loan Amount
+              <input type="number" name="loan_amount" min="0" step="1" placeholder="3000000" required />
+            </label>
+            <label>
+              Loan Term
+              <input type="number" name="loan_term" min="1" max="30" step="1" placeholder="12" required />
+            </label>
+            <label>
+              CIBIL Score
+              <input type="number" name="cibil_score" min="300" max="900" step="1" placeholder="780" required />
+            </label>
+            <label>
+              Residential Assets
+              <input type="number" name="residential_assets_value" min="0" step="1" placeholder="1000000" required />
+            </label>
+            <label>
+              Commercial Assets
+              <input type="number" name="commercial_assets_value" min="0" step="1" placeholder="500000" required />
+            </label>
+            <label>
+              Luxury Assets
+              <input type="number" name="luxury_assets_value" min="0" step="1" placeholder="300000" required />
+            </label>
+            <label>
+              Bank Assets
+              <input type="number" name="bank_asset_value" min="0" step="1" placeholder="600000" required />
+            </label>
+          </div>
+
+          <button id="predictButton" type="submit">Predict</button>
+        </form>
+
+        <aside class="card assistant-card">
+          <div class="section-title">
+            <p class="eyebrow">Mistral Assist</p>
+            <h2>Decision Helper</h2>
+          </div>
+          <div class="prompt-actions" aria-label="Assistant prompts">
+            <button type="button" data-question="Why did BankPulse give this loan result?">Why?</button>
+            <button type="button" data-question="How can this application improve its approval chances?">Improve</button>
+            <button type="button" data-question="Which input features mattered most for this prediction?">Factors</button>
+          </div>
+          <div class="assistant-log" id="assistantLog">
+            <p>Run a prediction, then ask for reasons, improvement steps, or key model factors.</p>
+          </div>
+          <form id="assistantForm" class="assistant-form">
+            <input name="question" type="text" placeholder="Ask about the current prediction" autocomplete="off" />
+            <button type="submit">Ask</button>
+          </form>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/script.js"></script>
+  </body>
+</html>
