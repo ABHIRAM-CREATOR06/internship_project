@@ -199,5 +199,5 @@ All routes passing.
 ---
 
 <div align="center">
-Built during internship · 2025
+Built during internship · 2026
 </div>
