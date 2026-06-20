@@ -21,6 +21,8 @@ const elements = {
   explanationText: document.querySelector("#explanationText"),
   assistantForm: document.querySelector("#assistantForm"),
   assistantLog: document.querySelector("#assistantLog"),
+  queryForm: document.querySelector("#queryForm"),
+  queryLog: document.querySelector("#queryLog"),
 };
 
 let latestPredictionContext = null;
@@ -111,6 +113,22 @@ function renderAssistantMessage(question, answer) {
   elements.assistantLog.append(questionNode, answerNode);
 }
 
+function renderQueryMessage(query, answer) {
+  elements.queryLog.innerHTML = "";
+
+  const queryNode = document.createElement("p");
+  const queryLabel = document.createElement("strong");
+  queryLabel.textContent = "Query:";
+  queryNode.append(queryLabel, ` ${query}`);
+
+  const answerNode = document.createElement("p");
+  const answerLabel = document.createElement("strong");
+  answerLabel.textContent = "Answer:";
+  answerNode.append(answerLabel, ` ${answer}`);
+
+  elements.queryLog.append(queryNode, answerNode);
+}
+
 elements.loanForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -167,6 +185,30 @@ async function askAssistant(question) {
   }
 }
 
+async function askQuery(queryText) {
+  if (!queryText) return;
+
+  elements.queryLog.textContent = "Querying dataset...";
+
+  try {
+    const response = await fetch("/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: queryText }),
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Query failed");
+    }
+
+    renderQueryMessage(queryText, result.answer);
+    elements.queryForm.elements.query.value = "";
+  } catch (error) {
+    renderQueryMessage(queryText, error.message);
+  }
+}
+
 elements.assistantForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const question = elements.assistantForm.elements.question.value.trim();
@@ -179,5 +221,18 @@ document.querySelectorAll("[data-question]").forEach((button) => {
   });
 });
 
+elements.queryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const queryText = elements.queryForm.elements.query.value.trim();
+  askQuery(queryText);
+});
+
+document.querySelectorAll("[data-query]").forEach((button) => {
+  button.addEventListener("click", () => {
+    askQuery(button.dataset.query);
+  });
+});
+
 loadHealth();
 loadStats();
+

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import time
+from collections import OrderedDict
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -82,6 +85,78 @@ NUMERIC_FEATURES = [
 DEFAULT_DEPENDENTS = 0
 LABELS = {0: "Approved", 1: "Rejected"}
 
+# ---------------------------------------------------------------------------
+# Response cache for Mistral API calls
+# ---------------------------------------------------------------------------
+CACHE_TTL = int(os.getenv("CACHE_TTL_SECONDS", "300"))
+CACHE_MAX_SIZE = int(os.getenv("CACHE_MAX_SIZE", "128"))
+
+_mistral_cache: OrderedDict[str, tuple[float, str]] = OrderedDict()
+
+
+def _cache_key(messages: list[dict[str, str]], max_tokens: int) -> str:
+    """Deterministic hash of the request so identical prompts hit the cache."""
+    raw = json.dumps({"m": messages, "t": max_tokens}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str) -> str | None:
+    entry = _mistral_cache.get(key)
+    if entry is None:
+        return None
+    ts, value = entry
+    if time.monotonic() - ts > CACHE_TTL:
+        _mistral_cache.pop(key, None)
+        return None
+    # Move to end so LRU eviction stays correct
+    _mistral_cache.move_to_end(key)
+    return value
+
+
+def _cache_put(key: str, value: str) -> None:
+    _mistral_cache[key] = (time.monotonic(), value)
+    _mistral_cache.move_to_end(key)
+    while len(_mistral_cache) > CACHE_MAX_SIZE:
+        _mistral_cache.popitem(last=False)
+
+
+# ---------------------------------------------------------------------------
+# Cached dataset stats
+# ---------------------------------------------------------------------------
+_stats_cache: dict | None = None
+
+
+def _compute_stats(df: pd.DataFrame) -> dict:
+    status = df["loan_status"].str.strip()
+    return {
+        "rows": int(len(df)),
+        "null_values": int(df.isnull().sum().sum()),
+        "approved": int((status == "Approved").sum()),
+        "rejected": int((status == "Rejected").sum()),
+    }
+
+
+def _get_dataset_summary(df: pd.DataFrame) -> str:
+    """Build a compact text summary of the dataset for Mistral context."""
+    status = df["loan_status"].str.strip()
+    numeric_cols = df.select_dtypes(include="number")
+    summary_lines = [
+        f"Dataset: {len(df)} rows, {len(df.columns)} columns.",
+        f"Approved: {int((status == 'Approved').sum())}, Rejected: {int((status == 'Rejected').sum())}.",
+        f"Columns: {', '.join(df.columns.tolist())}.",
+        "Key numeric stats:",
+    ]
+    for col in numeric_cols.columns:
+        summary_lines.append(
+            f"  {col}: mean={numeric_cols[col].mean():.0f}, "
+            f"min={numeric_cols[col].min():.0f}, "
+            f"max={numeric_cols[col].max():.0f}"
+        )
+    return "\n".join(summary_lines)
+
+
+# ---------------------------------------------------------------------------
+
 
 def first_existing(paths: list[Path]) -> Path | None:
     return next((path for path in paths if path.exists()), None)
@@ -96,6 +171,14 @@ def create_app() -> Flask:
     model = joblib.load(model_path) if model_path else None
     scaler = joblib.load(scaler_path) if scaler_path else None
 
+    # Pre-compute dataset summary once at startup for /query context
+    _dataset_summary: str | None = None
+    try:
+        _startup_df = load_dataset()
+        _dataset_summary = _get_dataset_summary(_startup_df)
+    except Exception:
+        _dataset_summary = None
+
     @app.get("/")
     def index():
         return send_from_directory(FRONTEND_DIR, "index.html")
@@ -106,17 +189,12 @@ def create_app() -> Flask:
 
     @app.get("/stats")
     def stats():
+        global _stats_cache
+        if _stats_cache is not None:
+            return jsonify(_stats_cache)
         df = load_dataset()
-        status = df["loan_status"].str.strip()
-
-        return jsonify(
-            {
-                "rows": int(len(df)),
-                "null_values": int(df.isnull().sum().sum()),
-                "approved": int((status == "Approved").sum()),
-                "rejected": int((status == "Rejected").sum()),
-            }
-        )
+        _stats_cache = _compute_stats(df)
+        return jsonify(_stats_cache)
 
     @app.post("/predict")
     def predict():
@@ -164,18 +242,52 @@ def create_app() -> Flask:
                 {
                     "role": "system",
                     "content": (
-                        "You are BankPulse Assist inside a beginner ML loan approval project. "
-                        "Answer only about this app, its prediction, and these features: education, self employment, "
-                        "income, loan amount, loan term, CIBIL score, and assets. "
-                        "Use the provided prediction context when present. Be practical, human, and under 55 words."
+                        "You are BankPulse Assist in a beginner ML loan-approval app. "
+                        "Answer only about this app, its prediction, and these features: "
+                        "education, self-employment, income, loan amount, loan term, "
+                        "CIBIL score, and assets. Use prediction context when present. "
+                        "Plain text only, no markdown. Under 50 words."
                     ),
                 },
                 {"role": "user", "content": json.dumps(user_payload, separators=(",", ":"))},
             ],
             fallback,
-            max_tokens=75,
+            max_tokens=65,
         )
         return jsonify({"answer": answer})
+
+    @app.post("/query")
+    def query():
+        payload = request.get_json(silent=True) or {}
+        user_query = str(payload.get("query", "")).strip()
+        if not user_query:
+            return jsonify({"error": "query is required"}), 400
+
+        context_text = _dataset_summary or "Dataset context unavailable."
+        fallback = (
+            "I can answer questions about the BankPulse loan dataset — "
+            "try asking about averages, counts, or ranges for columns like "
+            "cibil_score, income_annum, or loan_amount."
+        )
+
+        answer = call_mistral(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are BankPulse Query, a data assistant for a loan-approval dataset. "
+                        "Use the dataset summary below to answer the user's question accurately. "
+                        "Give a direct, concise answer with numbers when possible. "
+                        "Plain text only, no markdown. Under 60 words.\n\n"
+                        f"{context_text}"
+                    ),
+                },
+                {"role": "user", "content": user_query},
+            ],
+            fallback,
+            max_tokens=70,
+        )
+        return jsonify({"answer": answer, "query": user_query})
 
     return app
 
@@ -350,12 +462,15 @@ def build_mistral_explanation(features: dict, prediction: str, probability: floa
         [
             {
                 "role": "system",
-                "content": "Explain this BankPulse loan ML result in 2 short human sentences. Mention likely factors only. No disclaimer.",
+                "content": (
+                    "Explain this BankPulse loan ML result in 2 short plain-text sentences. "
+                    "Mention likely factors only. No markdown, no disclaimers."
+                ),
             },
             {"role": "user", "content": json.dumps(prompt, separators=(",", ":"))},
         ],
         fallback,
-        max_tokens=70,
+        max_tokens=50,
     )
 
 
@@ -366,9 +481,16 @@ def call_mistral(messages: list[dict[str, str]], fallback: str, max_tokens: int 
 
     endpoint = os.getenv("MISTRAL_API_URL", "https://api.mistral.ai/v1/chat/completions")
     model_name = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
-    token_limit = max_tokens or int(os.getenv("MISTRAL_MAX_TOKENS", "90"))
-    temperature = float(os.getenv("MISTRAL_TEMPERATURE", "0.2"))
+    token_limit = max_tokens or int(os.getenv("MISTRAL_MAX_TOKENS", "70"))
+    temperature = float(os.getenv("MISTRAL_TEMPERATURE", "0.15"))
     timeout = int(os.getenv("MISTRAL_TIMEOUT_SECONDS", "10"))
+
+    # --- Check cache ---
+    key = _cache_key(messages, token_limit)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
     body = json.dumps(
         {
             "model": model_name,
@@ -392,7 +514,9 @@ def call_mistral(messages: list[dict[str, str]], fallback: str, max_tokens: int 
     try:
         with urlopen(req, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
-        return data["choices"][0]["message"]["content"].strip()
+        result = data["choices"][0]["message"]["content"].strip()
+        _cache_put(key, result)
+        return result
     except (HTTPError, URLError, TimeoutError, KeyError, IndexError, json.JSONDecodeError):
         return fallback
 

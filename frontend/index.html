@@ -133,6 +133,25 @@
             <button type="submit">Ask</button>
           </form>
         </aside>
+
+        <aside class="card query-card" id="querySection">
+          <div class="section-title">
+            <p class="eyebrow">Dataset Explorer</p>
+            <h2>Custom Query</h2>
+          </div>
+          <div class="prompt-actions" aria-label="Quick queries">
+            <button type="button" data-query="What is the average CIBIL score for approved vs rejected loans?">Avg CIBIL</button>
+            <button type="button" data-query="What is the average loan amount by education level?">By Education</button>
+            <button type="button" data-query="What percentage of self-employed applicants get approved?">Self-Employed</button>
+          </div>
+          <div class="query-log" id="queryLog">
+            <p>Ask any question about the loan dataset — averages, counts, ranges, and more.</p>
+          </div>
+          <form id="queryForm" class="assistant-form">
+            <input name="query" type="text" placeholder="e.g. What is the median income of approved loans?" autocomplete="off" />
+            <button type="submit">Query</button>
+          </form>
+        </aside>
       </section>
     </main>
 

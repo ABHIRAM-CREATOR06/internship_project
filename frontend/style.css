@@ -192,14 +192,21 @@ h2 {
   align-items: flex-start;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 10px;
 }
 
 .form-card {
   min-width: 0;
   padding: 20px;
+  grid-row: 1 / 3;
 }
 
 .assistant-card {
+  min-width: 0;
+  padding: 20px;
+}
+
+.query-card {
   min-width: 0;
   padding: 20px;
 }
@@ -284,7 +291,8 @@ button:disabled {
   border-color: var(--primary);
 }
 
-.assistant-log {
+.assistant-log,
+.query-log {
   background: var(--canvas-soft);
   border-radius: 12px;
   color: var(--body);
@@ -294,7 +302,8 @@ button:disabled {
   padding: 14px;
 }
 
-.assistant-log p {
+.assistant-log p,
+.query-log p {
   margin: 0 0 12px;
 }
 
